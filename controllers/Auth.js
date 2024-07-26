@@ -1,87 +1,85 @@
-const OTP = require("../models/OTP");
 const User = require("../models/User");
-const otpGenerator = require("otp-generator");
-const isValidEmail = require("../utils/validation");
+const mailSender = require("../utils/mailSender");
+const isValidEmail = require("../utils/mailSender");
+const generator = require("otp-generator");
+const OTP = require("../models/OTP");
 const bcrypt = require("bcrypt");
 const Profile = require("../models/Profile");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
-//otp Send controller
+//SEND OTP CONTROLLER
 exports.sendOTP = async (req, res) => {
   try {
-    //fetch the data from req
-    const { email } = req.email;
+    //FETCH DATA FROM REQ BODY
+    const { email } = req.body;
 
-    //check email null or not
+    //DATA VALIDATION
     if (!email) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
-        message: "Undefine Mail",
+        message: "Undefine Email",
       });
     }
-
+    //EMAIL FORMATE VALIDATION
     if (!isValidEmail(email)) {
       return res.status(401).json({
         success: false,
-        message: "Incorrect Email Formate",
+        message: "Incorrect Email formate",
       });
     }
+    // USER ALREADY PRESENT OR EXISTS YES OR NOT
+    const userExists = await User.findOne({ email: email });
 
-    //check email exits or not
-    const checkUserPresent = await User.findOne({ email });
-
-    if (checkUserPresent) {
+    if (userExists) {
       return res.status(401).json({
         success: false,
-        message: "User Already Exits ",
+        message: "User already Exists",
       });
     }
-
-    //otp generate
-    var otp = otpGenerator.generate(6, {
-      upperCaseAlphabets: false,
+    //GENERATE UNIQUE OTP
+    const otp = generator.generate(6, {
       lowerCaseAlphabets: false,
+      upperCaseAlphabets: false,
       specialChars: false,
     });
 
-    console.log("Otp Generate", otp);
+    console.log("otp ", opt);
 
-    //get always unique otp
-    const result = await OTP.findOne({ otp: otp });
+    const result = await OTP.find({ otp: otp });
 
     while (result) {
-      otp = otpGenerator.generate(6, {
-        upperCaseAlphabets: false,
+      otp = generator.generate(6, {
         lowerCaseAlphabets: false,
+        upperCaseAlphabets: false,
         specialChars: false,
       });
-      result = await OTP.findOne({ otp: otp });
+      result = await OTP.find({ otp: otp });
     }
 
-    //save in database
+    //STORE OTP IN DATABASE
     const otpBody = await OTP.create({ email: email, otp: otp });
-    console.log(otpBody);
 
-    //send succes responce
+    //SEND RESPONCE
     return res.status(200).json({
       success: true,
       data: otpBody,
-      message: "OTP Send Successfully",
+      message: "OTP Send Successfully To User Email",
     });
   } catch (error) {
+    //Error Occure While Sending OTP to the User
     console.log(error);
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Something Went Wrong While Sending The OTP to the User",
     });
   }
 };
 
-//signup controller
+//SIGNUP CONTROLLER
 exports.signUp = async (req, res) => {
   try {
-    //fetch the all data from req body
+    //FETCH THE ALL REQUIRED DATA FROM REQ BODY
     const {
       firstName,
       lastName,
@@ -93,7 +91,7 @@ exports.signUp = async (req, res) => {
       otp,
     } = req.body;
 
-    //data validation
+    //DATA VALIDATION
     if (
       !firstName ||
       !lastName ||
@@ -106,69 +104,63 @@ exports.signUp = async (req, res) => {
     ) {
       return res.status(401).json({
         success: false,
-        message: "All Field Are Required",
+        message: "All fileds are Requireds",
       });
     }
 
-    //email validation
+    //EMAIL FORMATE VALIDATION
     if (!isValidEmail(email)) {
       return res.status(401).json({
         success: false,
-        message: "Uncorrect Email Formate",
+        message: "Incorrect Email Formate",
       });
     }
-    //check password and confirm password
+
+    //PASSWORD AND CONFIRM PASSWORD VALIDATION
     if (password !== confirmPassword) {
       return res.status(401).json({
         success: false,
-        message:
-          "Password And Confirm Password Does Not Match ! Please try Again",
+        message: "Password and Confirm Password Does Not Match",
       });
     }
 
-    //user already exists or not
-    const UserExists = await User.findOne({ email });
+    //CHECK USER ALREADY EXISTS OR NOT
+    const UserExists = await User.findOne({ email: email });
 
     if (UserExists) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
-        message: "User Is Already Registor",
+        message: "User Already Exists",
       });
     }
 
-    //otp fetch most recent
-    const recentOtp = await OTP.find({ email })
-      .sort({ createdAt: -1 })
-      .limit(1);
-    console.log(recentOtp);
+    //OTP VALIDATION
+    const recentOtp = await OTP.find(email).sort({ createdAt: -1 }).limit(1);
 
-    //opt validation
-    if (recentOtp.length == 0 || recentOtp == undefined) {
-      return res.status(400).json({
+    if (!recentOtp || recentOtp.length == 0 || recentOtp === undefined) {
+      return res.status(401).json({
         success: false,
         message: "Undefine OTP",
       });
     } else if (otp !== recentOtp.otp) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
         message: "Invalid OTP",
       });
     }
 
-    //password hash
+    //PASSWORD HASHING
     let hashPassword;
 
     try {
       hashPassword = await bcrypt.hash(password, 10);
     } catch (error) {
-      console.log(error);
       return res.status(401).json({
         success: false,
-        message: "Pasword Hashing Problem",
+        message: "Password Hashing Problem",
       });
     }
-
-    //profile
+    //USER PROFILE DATA CREATE
     const profileDetails = await Profile.create({
       gender: null,
       about: null,
@@ -176,86 +168,87 @@ exports.signUp = async (req, res) => {
       profession: null,
     });
 
-    //database entry
-    const user = await User.create({
+    //STORE IN DATABASE
+    const UserInformation = await User.create({
       firstName,
       lastName,
       email,
       password: hashPassword,
       phoneNumber,
       accountType,
-      additionalDtails: profileDetails._id,
       image: `https://api.dicebear.com/5.x/initials/svg?seed=${firstName} ${lastName}`,
+      additionalDtails: profileDetails._id,
     });
 
-    //send responce
+    //RETURN RESPONCE TO THE USER
+
     return res.status(200).json({
       success: true,
-      data: user,
-      message: "User Successfully Registor",
+      data: UserInformation,
+      message: "User Successfully SignUp",
     });
   } catch (error) {
+    //Error Occure While Sending OTP to the User
     console.log(error);
     return res.status(500).json({
       success: false,
-      message: "User SignUp Error",
+      message: "Something Went Wrong While SignUp the User",
     });
   }
 };
 
-//login controller
+//LOGIN CONTROLLER
 exports.login = async (req, res) => {
   try {
-    //fetch the data from req body
+    //FETCH THE DATA FROM REQ BODY
     const { email, password } = req.body;
 
-    //data validation
+    //DATA VALIDATION
     if (!email || !password) {
       return res.status(401).json({
         success: false,
-        message: "All Fields are required",
+        message: "All fileds are Requireds",
       });
     }
 
-    //email formate validation
+    //EMAIL FORMATE VALIDATION
     if (!isValidEmail(email)) {
       return res.status(401).json({
         success: false,
-        message: "Uncorrect Email Formate",
+        message: "Incorrect Email Formate",
       });
     }
 
-    //check user exists or not
-    const user = await User.findOne({ email })
-      .populate("additionalDtails")
-      .exec();
+    //CHECK USER PRESENT OR NOT
+    const user = await User.find({ email }).populate("additionalDtails").exec();
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: "SignUp Required!",
+        message: "Signup required Please Firstly Signup",
       });
     }
 
-    //token create and password match
-    if (await bcrypt.compare(password, existUser.password)) {
-      //payload
+    //PASSWORD MATCH
+    if (await bcrypt.compare(password, user.password)) {
       const payload = {
         email: user.email,
         id: user._id,
         accountType: user.accountType,
       };
 
-      const token = jwt.sign(payload, process.env.JWT_TOKEN, {
+      //TOKEN CREATE
+      const token = jwt.sign(payload, process.env.JWT_SECRET, {
         expiresIn: "2h",
       });
 
       user.token = token;
       user.password = undefined;
 
-      //create cookies
+      //COOKIE CREATE
+
       const options = {
-        expires: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+        expires: Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
         httpOnly: true,
       };
 
@@ -263,27 +256,32 @@ exports.login = async (req, res) => {
         success: true,
         token,
         user,
-        message: "Login Successfully",
+        message: "Successfully token Created",
       });
     } else {
-      //password does not match
       return res.status(401).json({
         success: false,
-        message: "Password is incorrect",
+        message: "Password Does Not Match",
       });
     }
   } catch (error) {
+    //Error Occure While Sending OTP to the User
     console.log(error);
     return res.status(500).json({
       success: false,
-      message: "User Login Problem",
+      message: "Something Went Wrong While login the User",
     });
   }
 };
 
-//change password
+//CHANGE PASSWORD
 exports.changePassword = async (req, res) => {
   try {
-    //fetch data from user
+    //FETCH THE DATA FROM REQ BODY
+    const { oldPassword, newPassword, confirmPassword } = req.body;
+
+    //DATA VALIDATION
+    if (!oldPassword || !newPassword || !confirmPassword) {
+    }
   } catch (error) {}
 };
